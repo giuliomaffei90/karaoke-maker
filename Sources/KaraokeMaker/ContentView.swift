@@ -577,6 +577,7 @@ private struct LineRow: View {
                             .contentShape(Rectangle())
                             .onTapGesture { select(word.id) }
                             .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { select(word.id) }
                     }
                 }
                 .simultaneousGesture(TapGesture(count: 2).onEnded {
