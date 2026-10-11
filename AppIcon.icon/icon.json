@@ -1,0 +1,17 @@
+{
+  "fill": {
+    "automatic-gradient": "extended-srgb:0.45000,0.20000,0.85000,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        { "glass": true, "image-name": "Note.svg", "name": "Note" },
+        { "glass": true, "image-name": "Fill.svg", "name": "Fill" },
+        { "glass": true, "image-name": "Lines.svg", "name": "Lines" }
+      ],
+      "shadow": { "kind": "neutral", "opacity": 0.5 },
+      "translucency": { "enabled": true, "value": 0.4 }
+    }
+  ],
+  "supported-platforms": { "squares": ["macOS"] }
+}
