@@ -4,6 +4,7 @@ struct StyleInspector: View {
     @Binding var style: KaraokeStyle
     @AppStorage(UserPresets.key) private var userPresetData = Data()
     @State private var naming = false
+    @State private var library = false
     @State private var presetName = ""
 
     private static let families = NSFontManager.shared.availableFontFamilies
@@ -12,24 +13,8 @@ struct StyleInspector: View {
         let userPresets = UserPresets.decode(userPresetData)
         Form {
             Section(tr("Preset")) {
-                Menu(tr("Apply Preset")) {
-                    ForEach(KaraokeStyle.presets) { p in Button(p.name) { style = p.style } }
-                    if !userPresets.isEmpty {
-                        Divider()
-                        ForEach(userPresets) { p in Button(p.name) { style = p.style } }
-                    }
-                }
-                HStack {
-                    Button(tr("Save as Preset…")) { presetName = ""; naming = true }
-                    if !userPresets.isEmpty {
-                        Menu(tr("Delete Preset")) {
-                            ForEach(userPresets) { p in
-                                Button(p.name) { userPresetData = UserPresets.encode(userPresets.filter { $0 != p }) }
-                            }
-                        }
-                        .fixedSize()
-                    }
-                }
+                Button(tr("Preset Library…")) { library = true }
+                Button(tr("Save as Preset…")) { presetName = ""; naming = true }
             }
             Section(tr("Text")) {
                 Picker(tr("Font"), selection: $style.fontFamily) {
@@ -73,6 +58,8 @@ struct StyleInspector: View {
                 }
                 .pickerStyle(.segmented)
                 slider(tr("Show before (s)"), $style.leadIn, 0.5...6, digits: 1)
+                slider(tr("Current word grows"), $style.pop, 0...0.5, digits: 2)
+                ColorPicker(tr("Current word box"), selection: RGBA.binding($style.highlight))
             }
             Section(tr("Background")) {
                 Toggle(tr("Box behind lines"), isOn: $style.box)
@@ -81,6 +68,7 @@ struct StyleInspector: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $library) { PresetLibrary(style: $style, userPresetData: $userPresetData) }
         .alert(tr("Save Preset"), isPresented: $naming) {
             TextField(tr("Name"), text: $presetName)
             Button(tr("Save")) {
@@ -100,6 +88,92 @@ struct StyleInspector: View {
                 Slider(value: value, in: range).accessibilityLabel(title)
                 Text(value.wrappedValue, format: .number.precision(.fractionLength(digits)))
                     .monospacedDigit().foregroundStyle(.secondary).frame(width: 38, alignment: .trailing)
+            }
+        }
+    }
+}
+
+/// A grid of looping previews of the built-in and saved presets; click one to apply it.
+struct PresetLibrary: View {
+    @Binding var style: KaraokeStyle
+    @Binding var userPresetData: Data
+    @Environment(\.dismiss) private var dismiss
+
+    /// One line sung over four seconds, over and over.
+    private static let loop = 4.0
+    private static let sample: [Line] = [
+        Line(words: tr("Sing along with me").split(separator: " ").enumerated().map {
+            Word(text: String($1), start: 0.6 + Double($0) * 0.55, end: 1.15 + Double($0) * 0.55)
+        }),
+    ]
+
+    var body: some View {
+        let user = UserPresets.decode(userPresetData)
+        VStack(spacing: 0) {
+            ScrollView {
+                TimelineView(.animation(minimumInterval: 1 / 30)) { tl in
+                    let time = tl.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: Self.loop)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 14)], alignment: .leading, spacing: 14) {
+                        ForEach(KaraokeStyle.presets) { cell($0, time: time, saved: false) }
+                        if !user.isEmpty {
+                            Section {
+                                ForEach(user) { cell($0, time: time, saved: true) }
+                            } header: {
+                                Text(tr("My Presets")).font(.headline).padding(.top, 8)
+                            }
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            Divider()
+            HStack {
+                Spacer()
+                Button(tr("Close")) { dismiss() }.keyboardShortcut(.cancelAction)
+            }
+            .padding(12)
+        }
+        .frame(minWidth: 700, idealWidth: 920, minHeight: 420, idealHeight: 620)
+    }
+
+    private func cell(_ p: Preset, time: Double, saved: Bool) -> some View {
+        Button {
+            style = p.style
+            dismiss()
+        } label: {
+            VStack(spacing: 6) {
+                thumbnail(p.style, time: time)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+                Text(p.name).font(.callout)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if saved {
+                Button(tr("Delete"), role: .destructive) {
+                    userPresetData = UserPresets.encode(UserPresets.decode(userPresetData).filter { $0 != p })
+                }
+            }
+        }
+    }
+
+    /// The real renderer on a close-up of the frame, so the proportions match the export.
+    private func thumbnail(_ style: KaraokeStyle, time: Double) -> some View {
+        Canvas { ctx, size in
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(cgColor: style.background.cgColor)))
+            ctx.withCGContext { cg in
+                var s = style
+                s.lineCount = 1
+                s.position = .middle
+                s.leadIn = 0.4
+                // The thumbnail shows the middle 35 % of a frame as wide as itself.
+                let frame = CGSize(width: size.width, height: size.height / 0.35)
+                cg.translateBy(x: 0, y: size.height)
+                cg.scaleBy(x: 1, y: -1)
+                cg.translateBy(x: 0, y: -(frame.height - size.height) / 2)
+                KaraokeRenderer.draw(Self.sample, style: s, at: time, in: cg, size: frame)
             }
         }
     }

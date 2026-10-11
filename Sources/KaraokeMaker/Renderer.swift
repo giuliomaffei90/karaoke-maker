@@ -29,27 +29,34 @@ enum KaraokeRenderer {
         // Word boundaries in UTF-16 offsets, which is what Core Text measures.
         var text = ""
         var ranges: [(Int, Int)] = []
-        for word in line.words {
+        let words = line.words.map { style.uppercase ? $0.text.uppercased() : $0.text }
+        for w in words {
             if !text.isEmpty { text += " " }
-            let w = style.uppercase ? word.text.uppercased() : word.text
             let from = text.utf16.count
             text += w
             ranges.append((from, text.utf16.count))
         }
         var fontSize = style.fontSize * scale
         var ctLine = makeLine(text, font: style.font(size: fontSize))
-        var lineWidth = CTLineGetTypographicBounds(ctLine, nil, nil, nil)
+        // Extra room between words for the current one to grow into.
+        var gap = style.pop * fontSize * 1.2
+        var lineWidth = CTLineGetTypographicBounds(ctLine, nil, nil, nil) + Double(words.count - 1) * gap
         if lineWidth > width * 0.92 {  // too long for the frame: shrink this line only
             fontSize *= width * 0.92 / lineWidth
+            gap = style.pop * fontSize * 1.2
             ctLine = makeLine(text, font: style.font(size: fontSize))
-            lineWidth = CTLineGetTypographicBounds(ctLine, nil, nil, nil)
+            lineWidth = CTLineGetTypographicBounds(ctLine, nil, nil, nil) + Double(words.count - 1) * gap
         }
         let x = (width - lineWidth) / 2
-        let offsets = ranges.map { (CTLineGetOffsetForStringIndex(ctLine, $0.0, nil), CTLineGetOffsetForStringIndex(ctLine, $0.1, nil)) }
+        let font = style.font(size: fontSize)
+        let offsets = ranges.enumerated().map { k, r in
+            (CTLineGetOffsetForStringIndex(ctLine, r.0, nil) + Double(k) * gap, CTLineGetOffsetForStringIndex(ctLine, r.1, nil) + Double(k) * gap)
+        }
 
-        // How far the sung colour has reached.
+        // The word being sung, and how far the sung colour has reached.
+        let current = line.words.lastIndex { $0.start <= time }
         var fillX = 0.0
-        if let k = line.words.lastIndex(where: { $0.start <= time }) {
+        if let k = current {
             let word = line.words[k], (a, b) = offsets[k]
             let progress = style.fill == .word ? 1 : min(1, (time - word.start) / max(word.end - word.start, 0.01))
             fillX = a + (b - a) * progress
@@ -73,25 +80,45 @@ enum KaraokeRenderer {
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.textMatrix = .identity
         let outline = style.outlineWidth * scale
-        func pass(fill: RGBA, stroke: RGBA) {
+        func pass(_ word: CTLine, at px: Double, fill: RGBA, stroke: RGBA) {
             if outline > 0 {
                 ctx.setTextDrawingMode(.stroke)
                 ctx.setLineWidth(outline * 2)  // half of it is covered by the fill
                 ctx.setLineJoin(.round)
                 ctx.setStrokeColor(stroke.cgColor)
-                ctx.textPosition = CGPoint(x: x, y: baseline)
-                CTLineDraw(ctLine, ctx)
+                ctx.textPosition = CGPoint(x: px, y: baseline)
+                CTLineDraw(word, ctx)
             }
             ctx.setTextDrawingMode(.fill)
             ctx.setFillColor(fill.cgColor)
-            ctx.textPosition = CGPoint(x: x, y: baseline)
-            CTLineDraw(ctLine, ctx)
+            ctx.textPosition = CGPoint(x: px, y: baseline)
+            CTLineDraw(word, ctx)
         }
-        pass(fill: style.unsung, stroke: style.outline)
-        if fillX > 0 {
+        // Word by word, at the positions the whole line gave them, so the current one can grow or get a box.
+        for (k, (a, b)) in offsets.enumerated() {
+            let word = makeLine(words[k], font: font)
             ctx.saveGState()
-            ctx.clip(to: CGRect(x: 0, y: baseline - fontSize, width: x + fillX, height: fontSize * 3))
-            pass(fill: style.sung, stroke: style.sungOutline)
+            if k == current, style.pop > 0 {
+                let grow = 1 + style.pop * min(1, (time - line.words[k].start) / 0.12)
+                let cx = x + (a + b) / 2, cy = baseline + fontSize * 0.35
+                ctx.translateBy(x: cx, y: cy)
+                ctx.scaleBy(x: grow, y: grow)
+                ctx.translateBy(x: -cx, y: -cy)
+            }
+            if k == current, style.highlight.a > 0 {
+                let pad = fontSize * 0.14
+                let rect = CGRect(x: x + a - pad, y: baseline - fontSize * 0.28, width: b - a + pad * 2, height: fontSize * 1.18)
+                ctx.setFillColor(style.highlight.cgColor)
+                ctx.addPath(CGPath(roundedRect: rect, cornerWidth: pad, cornerHeight: pad, transform: nil))
+                ctx.fillPath()
+            }
+            pass(word, at: x + a, fill: style.unsung, stroke: style.outline)
+            if fillX > a {
+                ctx.saveGState()
+                ctx.clip(to: CGRect(x: 0, y: baseline - fontSize, width: x + fillX, height: fontSize * 3))
+                pass(word, at: x + a, fill: style.sung, stroke: style.sungOutline)
+                ctx.restoreGState()
+            }
             ctx.restoreGState()
         }
         ctx.endTransparencyLayer()

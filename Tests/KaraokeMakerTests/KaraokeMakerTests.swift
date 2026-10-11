@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import CoreGraphics
 @testable import KaraokeMaker
 
 private func line(_ words: (String, Double, Double)...) -> Line {
@@ -156,4 +157,20 @@ func debugAlignment() async throws {
     #expect(data.starts(with: Data("bplist".utf8)))
     let back = try PropertyListDecoder().decode(KaraokeDocument.self, from: data)
     #expect(back.lines == doc.lines && back.mediaPath == doc.mediaPath)
+}
+
+/// Every preset draws something, mid-word, with the current word growing and boxed.
+@Test func presetsRender() {
+    let lines = [line(("sing", 0, 1), ("along", 1, 2), ("now", 2, 3))]
+    for preset in KaraokeStyle.presets {
+        let ctx = CGContext(data: nil, width: 320, height: 180, bitsPerComponent: 8, bytesPerRow: 0,
+                            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        var style = preset.style
+        style.pop = 0.2
+        style.highlight = RGBA(1, 0, 0)
+        KaraokeRenderer.draw(lines, style: style, at: 1.5, in: ctx, size: CGSize(width: 320, height: 180))
+        let pixels = UnsafeBufferPointer(start: ctx.data!.assumingMemoryBound(to: UInt8.self), count: ctx.bytesPerRow * 180)
+        #expect(pixels.contains { $0 != 0 }, "\(preset.name) drew nothing")
+    }
+    #expect(Set(KaraokeStyle.presets.map(\.name)).count == KaraokeStyle.presets.count)
 }
