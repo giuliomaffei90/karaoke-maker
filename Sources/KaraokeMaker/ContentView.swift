@@ -331,13 +331,14 @@ struct ContentView: View {
             ToolbarSpacer(.fixed)
         }
         ToolbarItem {
-            Button(tr("Transcribe…")) { showTranscribe = true }
+            Button(tr("Transcribe")) { showTranscribe = true }
+                .buttonStyle(.glass)  // same shape and padding as Export, without its tint
                 .disabled(media == nil || job != nil)
                 .help(tr("Recognise the lyrics and their timing from the audio"))
         }
         ToolbarSpacer(.fixed)
         ToolbarItem {
-            Button(tr("Export…"), action: export)
+            Button(tr("Export"), action: export)
                 .buttonStyle(.glassProminent)
                 .disabled(media == nil || job != nil || document.lines.isEmpty)
                 .help(tr("Render the karaoke video"))
