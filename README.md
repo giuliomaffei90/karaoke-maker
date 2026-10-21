@@ -71,7 +71,7 @@ you transcribe in it.
 ## Installation
 
 ```bash
-git clone https://gitlab.com/giuliomaffei90/karaoke-maker.git
+git clone https://github.com/giuliomaffei90/karaoke-maker.git
 cd karaoke-maker
 ./build.sh
 open "dist/Karaoke Maker.app"
