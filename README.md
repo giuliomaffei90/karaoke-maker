@@ -122,3 +122,7 @@ versions still open.
 - A project points to its media by path: if the file is moved, the project asks for it again.
 - When the timeline is zoomed out, the labels of short words overlap; zoom in to read them.
 - **Transcribe** replaces the lyrics already in the project.
+
+## License
+
+[MIT](LICENSE)
